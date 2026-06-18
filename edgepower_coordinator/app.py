@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Literal, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .store import (
@@ -95,6 +96,12 @@ def get_store() -> SQLiteCoordinatorStore:
     return SQLiteCoordinatorStore(get_db_path())
 
 
+def get_cors_origins() -> list[str]:
+    raw = os.environ.get("EDGEPOWER_CORS_ORIGINS", "*")
+    origins = [item.strip() for item in raw.replace("\n", ",").split(",") if item.strip()]
+    return origins or ["*"]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     store = get_store()
@@ -108,6 +115,12 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description="Safe coordinator for allowlisted distributed edge-compute jobs.",
         lifespan=lifespan,
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=get_cors_origins(),
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
     )
 
     @app.get("/health", response_model=HealthResponse)
@@ -130,9 +143,23 @@ def create_app() -> FastAPI:
             capacity=registration.capacity,
         )
 
+    @app.get("/nodes")
+    def list_nodes(
+        limit: int = Query(default=100, ge=1, le=500),
+        store: SQLiteCoordinatorStore = Depends(get_store),
+    ) -> dict[str, Any]:
+        return {"nodes": store.list_nodes(limit=limit)}
+
     @app.post("/jobs", status_code=status.HTTP_201_CREATED)
     def create_job(job: JobCreate, store: SQLiteCoordinatorStore = Depends(get_store)) -> dict[str, Any]:
         return store.create_job(kind=job.kind, payload=job.payload)
+
+    @app.get("/jobs")
+    def list_jobs(
+        limit: int = Query(default=100, ge=1, le=500),
+        store: SQLiteCoordinatorStore = Depends(get_store),
+    ) -> dict[str, Any]:
+        return {"jobs": store.list_jobs(limit=limit)}
 
     @app.get("/jobs/next", response_model=JobEnvelope)
     def next_job(

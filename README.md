@@ -33,6 +33,13 @@ directory. Override it with:
 $env:EDGEPOWER_DB_PATH = "C:\data\edgepower.sqlite3"
 ```
 
+Browser apps can call the coordinator directly. CORS is enabled for all origins
+by default for local/operator use. Restrict it in production with:
+
+```powershell
+$env:EDGEPOWER_CORS_ORIGINS = "https://edgepower.example.com,https://admin.example.com"
+```
+
 ## Docker
 
 ```powershell
@@ -63,6 +70,14 @@ Content-Type: application/json
 }
 ```
 
+### List nodes
+
+```http
+GET /nodes?limit=100
+```
+
+Returns recent registered nodes for admin dashboards.
+
 ### Create a job
 
 ```http
@@ -76,6 +91,14 @@ Content-Type: application/json
 ```
 
 The service rejects any job kind outside the allowlist.
+
+### List jobs
+
+```http
+GET /jobs?limit=100
+```
+
+Returns recent jobs, newest first, including receipts and result fields.
 
 ### Fetch the next job for a node
 

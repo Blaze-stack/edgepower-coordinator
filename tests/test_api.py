@@ -56,6 +56,17 @@ def test_node_registration_is_idempotent(client: TestClient):
     assert second["capacity"] == {"cpu": 4}
 
 
+def test_lists_registered_nodes(client: TestClient):
+    register_node(client, node_id="node-a")
+    register_node(client, node_id="node-b")
+
+    response = client.get("/nodes", params={"limit": 10})
+
+    assert response.status_code == 200
+    node_ids = {node["node_id"] for node in response.json()["nodes"]}
+    assert {"node-a", "node-b"}.issubset(node_ids)
+
+
 def test_rejects_unsafe_job_kind(client: TestClient):
     response = client.post("/jobs", json={"kind": "shell", "payload": {"cmd": "whoami"}})
 
@@ -84,6 +95,18 @@ def test_assigns_next_pending_job_to_registered_node(client: TestClient):
     assert job["payload"] == {"message": "hello"}
     assert job["status"] == "assigned"
     assert job["assigned_node_id"] == "node-a"
+
+
+def test_lists_jobs_for_admin_ui(client: TestClient):
+    first = client.post("/jobs", json={"kind": "echo", "payload": {"message": "hello"}}).json()
+    second = client.post("/jobs", json={"kind": "sha256", "payload": {"data": "hello"}}).json()
+
+    response = client.get("/jobs", params={"limit": 10})
+
+    assert response.status_code == 200
+    job_ids = [job["job_id"] for job in response.json()["jobs"]]
+    assert second["job_id"] in job_ids
+    assert first["job_id"] in job_ids
 
 
 def test_next_job_returns_null_when_queue_empty(client: TestClient):
@@ -160,3 +183,17 @@ def test_default_database_path_is_relative_to_runtime(monkeypatch):
     from edgepower_coordinator.app import get_db_path
 
     assert os.path.basename(get_db_path()) == "edgepower-coordinator.sqlite3"
+
+
+def test_cors_preflight_allows_browser_admin_ui(client: TestClient):
+    response = client.options(
+        "/jobs",
+        headers={
+            "Origin": "http://localhost:4173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "*"

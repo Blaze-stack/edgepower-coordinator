@@ -313,6 +313,40 @@ class SQLiteCoordinatorStore:
             receipt_rows = self._fetch_receipts(connection, job_id)
         return self._job_from_row(row, receipt_rows=receipt_rows)
 
+    def list_nodes(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        self.initialize()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT node_id, public_key, capacity_json, created_at, updated_at
+                FROM nodes
+                ORDER BY updated_at DESC, node_id ASC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._node_from_row(row) for row in rows]
+
+    def list_jobs(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        self.initialize()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    job_id, kind, payload_json, status, assigned_node_id, result_json, signature,
+                    created_at, updated_at, assigned_at, completed_at
+                FROM jobs
+                ORDER BY created_at DESC, job_id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            jobs = [
+                self._job_from_row(row, receipt_rows=self._fetch_receipts(connection, row["job_id"]))
+                for row in rows
+            ]
+        return jobs
+
     def list_events(self, *, limit: int = 100) -> list[dict[str, Any]]:
         self.initialize()
         with self.connect() as connection:
